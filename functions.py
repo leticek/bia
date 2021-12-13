@@ -1,3 +1,5 @@
+import math
+
 import numpy as np
 from numpy import pi, cos, exp, sqrt, e, sin
 
@@ -22,9 +24,8 @@ def rosenbrock(params):
 
 
 def rastrigin(params):
-    dimension = len(params)
-    return 10 * dimension + (
-            (params[0] ** 2 - 10 * cos(2 * pi * params[0])) + (params[1] ** 2 - 10 * cos(2 * pi * params[1])))
+    A = 10
+    return A + sum([(x**2 - A * np.cos(2 * math.pi * x)) for x in params])
 
 
 def griewank(params):

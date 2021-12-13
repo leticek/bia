@@ -1,4 +1,6 @@
 import copy
+import math
+import random
 
 import matplotlib.pyplot as plt
 import mpl_toolkits.mplot3d.axes3d as p3
@@ -15,9 +17,9 @@ def anim_func(n, x, y, z, point):
 
 
 def draw(lower, upper, function, ax):
-    X, Y = numpy.meshgrid(numpy.linspace(lower, upper), numpy.linspace(lower, upper))
-    Z = function([X, Y])
-    ax.plot_surface(X, Y, Z, cmap='jet', alpha=0.2)
+    x, y = numpy.meshgrid(numpy.linspace(lower, upper), numpy.linspace(lower, upper))
+    z = function([x, y])
+    ax.plot_surface(x, y, z, cmap='jet', alpha=0.2)
 
 
 def new_best(x, y, z):
@@ -28,6 +30,140 @@ def diff_ev_mutate(x, mut_constant):
     return numpy.array(x[0]) + mut_constant * (numpy.array(x[1]) - numpy.array(x[2]))
 
 
+def get_pb(swarm, function):
+    personal_best = function(swarm[0])
+    personal_best_index = 0
+    for i, particle in enumerate(swarm):
+        particle_value = function(particle)
+        if personal_best > particle_value:
+            personal_best_index = i
+            personal_best = particle_value
+
+    return swarm[personal_best_index]
+
+
+def animate_soma(i, best_xxs, best_yys, best_zzs, points):
+    for j in range(len(best_xxs[0])):
+        x = best_xxs[i][j]
+        y = best_yys[i][j]
+        z = best_zzs[i][j]
+
+        points[j].set_data_3d(np.array([x, y, z]))
+        points[j].set_3d_properties(z, 'z')
+    return points
+
+
+def get_leader(swarm, function):
+    personal_best = function(swarm[0])
+    personal_best_index = 0
+    for i, particle in enumerate(swarm):
+        particle_value = function(particle)
+        if personal_best > particle_value:
+            personal_best_index = i
+            personal_best = particle_value
+
+    return swarm[personal_best_index]
+
+
+def generate_city_positions(city_list):
+    x = []
+    y = []
+
+    for city in city_list:
+        x.append(city.x)
+        y.append(city.y)
+    return x, y
+
+
+def generate_pop(city_list, total_population):
+    populations = []
+    for i in range(0, total_population):
+        tmp_gen = []
+        while len(tmp_gen) != len(city_list):
+            random_index = random.randrange(0, len(city_list))
+            if city_list[random_index] not in tmp_gen:
+                tmp_gen.append(city_list[random_index])
+
+        populations.append(tmp_gen)
+    return populations
+
+
+def mutate(populationM):
+    index_a = random.randrange(0, len(populationM))
+    index_b = random.randrange(0, len(populationM))
+    tmp = populationM[index_a]
+    populationM[index_a] = populationM[index_b]
+    populationM[index_b] = tmp
+    return populationM
+
+
+def calculate_total_distance(track):
+    total_distance = 0
+    for i in range(0, len(track) - 1):
+        total_distance += track[i].get_distance(track[i + 1])
+    total_distance += track[len(track) - 1].get_distance(track[0])
+    return total_distance
+
+
+def cross_breed(population_count):
+    new_populations = []
+    fitness_populations = []
+
+    for pop in population_count:
+        fitness_populations.append((pop, calculate_total_distance(pop)))
+
+    fitness_populations.sort(key=lambda x: x[1], reverse=False)
+
+    for pop in population_count:
+        next_population = fitness_populations[random.randrange(0, 5)][0]
+        new_population_start = []
+        new_population_middle = []
+        new_population_end = []
+        start = int(random.random() * len(pop) - 1)
+        stop = int(random.random() * len(pop))
+        while stop == start:
+            stop = int(random.random() * len(pop))
+        if stop < start:
+            tmp = start
+            start = stop
+            stop = tmp
+
+        for i in range(0, len(pop)):
+            if i >= stop:
+                new_population_end.append(pop[i])
+            if i <= start:
+                new_population_start.append(pop[i])
+
+        while len(new_population_start + new_population_middle + new_population_end) != len(pop):
+            indexer = 0
+            while True:
+                if (next_population[indexer] not in new_population_start) and (
+                        next_population[indexer] not in new_population_middle) and (
+                        next_population[indexer] not in new_population_end):
+                    new_population_middle.append(next_population[indexer])
+                    break
+                else:
+                    indexer += 1
+        final_population = new_population_start + new_population_middle + new_population_end
+
+        if random.random() < 0.5:
+            new_populations.append(mutate(final_population))
+        else:
+            new_populations.append(final_population)
+    return new_populations
+
+
+def find_best(population):
+    best_population = population[0]
+    best_distance = calculate_total_distance(population[0])
+
+    for pop in population:
+        if calculate_total_distance(pop) < best_distance:
+            best_distance = calculate_total_distance(pop)
+            best_population = pop
+    return best_population
+
+
 class Vizualizer:
     def __init__(self, dimension, lower_bound, upper_bound):
         self.dimension = dimension
@@ -35,6 +171,15 @@ class Vizualizer:
         self.upper_bound = upper_bound
         self.parameters = numpy.zeros(self.dimension)
         self.function = numpy.inf
+
+    class City:
+        def __init__(self, x, y, id):
+            self.id = id
+            self.x = x
+            self.y = y
+
+        def get_distance(self, city):
+            return math.sqrt(math.pow(city.x - self.x, 2) + math.pow(city.y - self.y, 2))
 
     def hill_climb(self, functions, neighbour_count=10, sigma=0.5, total_iterations=1000):
         for func in functions:
@@ -62,10 +207,10 @@ class Vizualizer:
             self.soma(func, pop_size, prt, path_len, step, m_max)
             print("-------")
 
-    def particle_swarm(self, functions, pop_size=20, migration_cycles=50, c1=2, v_mini=-1, v_maxi=1):
+    def particle_swarm(self, functions, pop_size=20, migration_cycles=50, c1=2, c2=2, v_mini=-1, v_maxi=1):
         for func in functions:
             print("Starting %s" % func.__name__)
-            self.ps(func, pop_size, migration_cycles, c1, v_mini, v_maxi)
+            self.ps(func, pop_size, migration_cycles, c1, c2, v_mini, v_maxi)
             print("-------")
 
     def hc(self, function, neighbour_count, sigma, total_iterations):
@@ -148,17 +293,18 @@ class Vizualizer:
             for item in pop:
                 if best is None or item[self.dimension] < best[self.dimension]:
                     best = item
+                    new_best(best[0], best[1], best[2])
             points_to_show.append(best)
         self.show(points_to_show, function)
 
     def soma(self, function, pop_size, prt, path_len, step, m_max):
         population = self.get_neighbours_gauss([self.upper_bound, self.upper_bound], pop_size, 0.5)
-        leader = self.get_leader(population, function)
+        leader = get_leader(population, function)
         population_solution = []
         m = 0
         while m < m_max:
             print(m)
-            leader = self.get_leader(population, function)
+            leader = get_leader(population, function)
             for i in range(len(population)):
                 population[i] = self.recalculate_individual(function, population[i], leader, path_len, prt, step)
 
@@ -168,9 +314,9 @@ class Vizualizer:
             self.animate_soma_sol(population_solution, function)
         return leader
 
-    def ps(self, function, pop_size, migration_cycles, c1, v_mini, v_maxi):
+    def ps(self, function, pop_size, migration_cycles, c1, c2, v_mini, v_maxi):
         swarm = self.get_neighbours_gauss([self.upper_bound, self.upper_bound], pop_size, 0.5)
-        g_best = self.get_pb(swarm, function)
+        g_best = get_pb(swarm, function)
         p_best = copy.deepcopy(swarm)
         velocity = self.generate_swarm_velocity(pop_size, v_mini, v_maxi)
         swarm_solution = []
@@ -179,7 +325,7 @@ class Vizualizer:
         while current_cycle < migration_cycles:
             for i in range(len(swarm)):
                 velocity[i] = self.recalculate_particle_velocity(velocity[i], swarm[i], p_best[i], g_best,
-                                                                 current_cycle, migration_cycles, c1, v_mini, v_maxi)
+                                                                 current_cycle, migration_cycles, c1)
                 swarm[i] = self.fix_particle_bounds(np.add(swarm[i], velocity[i]))
 
                 if function(swarm[i]) < function(p_best[i]):
@@ -188,22 +334,47 @@ class Vizualizer:
                         g_best = copy.deepcopy(p_best[i])
 
             swarm_solution.append(copy.deepcopy(swarm))
+            c2 = c2
             current_cycle += 1
 
         if self.dimension == 2:
             self.animate_soma_sol(swarm_solution, function)
         return g_best
 
-    def get_pb(self, swarm, function):
-        personal_best = function(swarm[0])
-        personal_best_index = 0
-        for i, particle in enumerate(swarm):
-            particle_value = function(particle)
-            if personal_best > particle_value:
-                personal_best_index = i
-                personal_best = particle_value
+    def genetic_algorithm(self, city_count=10, total_populations=150):
+        city_list = self.generate_cities(city_count, 200)
+        population = generate_pop(city_list, total_populations)
+        city_x, city_y = generate_city_positions(city_list)
+        best_distance = math.inf
+        plt.ion()
 
-        return swarm[personal_best_index]
+        while True:
+            population = cross_breed(population)
+            new_best_pop = find_best(population)
+            new_best_distance = calculate_total_distance(new_best_pop)
+
+            if new_best_distance < best_distance:
+                best_pop = new_best_pop[:]
+                best_distance = new_best_distance
+
+                for aa in range(0, len(best_pop) - 1):
+                    plt.plot([best_pop[aa].x, best_pop[aa + 1].x], [best_pop[aa].y, best_pop[aa + 1].y])
+                plt.plot([best_pop[len(best_pop) - 1].x, best_pop[0].x], [best_pop[len(best_pop) - 1].y, best_pop[0].y])
+
+                plt.scatter(city_x, city_y, s=60, c=(0, 0, 0), alpha=0.5)
+                plt.title('TSP Current:' + str(best_distance))
+
+                plt.draw()
+                plt.pause(0.5)
+                plt.clf()
+
+    def generate_cities(self, count, boundaries):
+        cities = []
+        for i in range(0, count):
+            new_x = random.randrange(0, boundaries)
+            new_y = random.randrange(0, boundaries)
+            cities.append(self.City(new_x, new_y, i))
+        return cities
 
     def generate_swarm_velocity(self, pop_size, v_mini, v_maxi):
         p = []
@@ -214,8 +385,7 @@ class Vizualizer:
             p.append(pi)
         return p
 
-    def recalculate_particle_velocity(self, velocity, particle, p_best, g_best, i, migration_cycles, c1, v_mini,
-                                      v_maxi):
+    def recalculate_particle_velocity(self, velocity, particle, p_best, g_best, i, migration_cycles, c1):
         ws = 0.9
         we = 0.4
         r1 = np.random.uniform()
@@ -252,6 +422,7 @@ class Vizualizer:
             y.append(points[i][1])
             z.append(points[i][2])
         point, = ax.plot(xs=x, ys=y, zs=z, zdir='^')
+        plt.suptitle(function.__name__)
         tmp = animation.FuncAnimation(fig, anim_func, len(x), interval=30, fargs=(x, y, z, point))
         plt.show()
 
@@ -287,17 +458,7 @@ class Vizualizer:
         trial_vector.append(function(trial_vector))
         return trial_vector
 
-    def animate_soma(self, i, best_xxs, best_yys, best_zzs, points):
-        for j in range(len(best_xxs[0])):
-            x = best_xxs[i][j]
-            y = best_yys[i][j]
-            z = best_zzs[i][j]
-
-            points[j].set_data_3d(np.array([x, y, z]))
-            points[j].set_3d_properties(z, 'z')
-        return points
-
-    def animate_soma_sol(self, best_solutions, fnc):
+    def animate_soma_sol(self, best_solutions, function):
         fig = plt.figure()
         ax = p3.Axes3D(fig)
 
@@ -313,18 +474,18 @@ class Vizualizer:
             for i in range(len(best_solution)):
                 best_xs.append(best_solution[i][0])
                 best_ys.append(best_solution[i][1])
-                best_zs.append(fnc([best_solution[i][0], best_solution[i][1]]))
+                best_zs.append(function([best_solution[i][0], best_solution[i][1]]))
             best_xxs.append(best_xs)
             best_yys.append(best_ys)
             best_zzs.append(best_zs)
 
-        draw(self.lower_bound, self.upper_bound, fnc, ax)
+        draw(self.lower_bound, self.upper_bound, function, ax)
         for i in range(len(best_xxs[0])):
             point, = ax.plot([best_xxs[i][0]], [best_yys[i][0]], [best_zzs[i][0]], 'o')
             points.append(point)
-        animate = animation.FuncAnimation(fig, self.animate_soma, len(best_xxs),
-                                          fargs=(best_xxs, best_yys, best_zzs, points), interval=300,
-                                          repeat=False)
+            plt.suptitle(function.__name__)
+        tmp = animation.FuncAnimation(fig, animate_soma, len(best_xxs), fargs=(best_xxs, best_yys, best_zzs, points),
+                                      interval=50, repeat=False)
         plt.show()
 
     def recalculate_individual(self, function, individual, leader, path_length, prt, step):
@@ -352,17 +513,6 @@ class Vizualizer:
             return partial_individual
 
         return old_individual
-
-    def get_leader(self, swarm, function):
-        personal_best = function(swarm[0])
-        personal_best_index = 0
-        for i, particle in enumerate(swarm):
-            particle_value = function(particle)
-            if personal_best > particle_value:
-                personal_best_index = i
-                personal_best = particle_value
-
-        return swarm[personal_best_index]
 
     def fix_boundaries(self, individual):
         for j in range(self.dimension):
