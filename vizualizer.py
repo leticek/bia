@@ -97,11 +97,11 @@ def mutate(populationM):
     return populationM
 
 
-def calculate_total_distance(track):
+def calculate_total_distance(path):
     total_distance = 0
-    for i in range(0, len(track) - 1):
-        total_distance += track[i].get_distance(track[i + 1])
-    total_distance += track[len(track) - 1].get_distance(track[0])
+    for i in range(0, len(path) - 1):
+        total_distance += path[i].get_distance(path[i + 1])
+    total_distance += path[len(path) - 1].get_distance(path[0])
     return total_distance
 
 
@@ -164,6 +164,16 @@ def find_best(population):
     return best_population
 
 
+class City:
+    def __init__(self, x, y, id):
+        self.id = id
+        self.x = x
+        self.y = y
+
+    def get_distance(self, city):
+        return math.sqrt(math.pow(city.x - self.x, 2) + math.pow(city.y - self.y, 2))
+
+
 class Vizualizer:
     def __init__(self, dimension, lower_bound, upper_bound):
         self.dimension = dimension
@@ -171,15 +181,6 @@ class Vizualizer:
         self.upper_bound = upper_bound
         self.parameters = numpy.zeros(self.dimension)
         self.function = numpy.inf
-
-    class City:
-        def __init__(self, x, y, id):
-            self.id = id
-            self.x = x
-            self.y = y
-
-        def get_distance(self, city):
-            return math.sqrt(math.pow(city.x - self.x, 2) + math.pow(city.y - self.y, 2))
 
     def hill_climb(self, functions, neighbour_count=10, sigma=0.5, total_iterations=1000):
         for func in functions:
@@ -193,6 +194,33 @@ class Vizualizer:
             print("Starting %s" % func.__name__)
             self.sa(func, initial_temperature, minimal_temperature, cooling_coefficient, sigma)
             print("-------")
+
+    def genetic_algorithm(self, city_count=10, total_populations=150):
+        city_list = self.generate_cities(city_count, 200)
+        population = generate_pop(city_list, total_populations)
+        city_x, city_y = generate_city_positions(city_list)
+        best_distance = math.inf
+        plt.ion()
+
+        while True:
+            population = cross_breed(population)
+            new_best_pop = find_best(population)
+            new_best_distance = calculate_total_distance(new_best_pop)
+
+            if new_best_distance < best_distance:
+                best_pop = new_best_pop[:]
+                best_distance = new_best_distance
+
+                for aa in range(0, len(best_pop) - 1):
+                    plt.plot([best_pop[aa].x, best_pop[aa + 1].x], [best_pop[aa].y, best_pop[aa + 1].y])
+                plt.plot([best_pop[len(best_pop) - 1].x, best_pop[0].x], [best_pop[len(best_pop) - 1].y, best_pop[0].y])
+
+                plt.scatter(city_x, city_y, s=60, c=(0, 0, 0), alpha=0.5)
+                plt.title('TSP Current:' + str(best_distance))
+
+                plt.draw()
+                plt.pause(0.5)
+                plt.clf()
 
     def differential_evolution(self, functions, parents_count=5, iteration_count=10, mut_constant=0.5,
                                crossover_ran=0.5):
@@ -212,6 +240,118 @@ class Vizualizer:
             print("Starting %s" % func.__name__)
             self.ps(func, pop_size, migration_cycles, c1, c2, v_mini, v_maxi)
             print("-------")
+
+    class AntColony:
+        def __init__(self, total_ants=20, total_best=1, n_iterations=10000, decay=0.95, total_cities=20):
+            boundaries = 1000
+            cities = []
+
+            for i in range(0, total_cities):
+                new_x = random.randrange(0, boundaries)
+                new_y = random.randrange(0, boundaries)
+                cities.append(City(new_x, new_y, i))
+
+            distance_matrix = [[np.inf for _ in range(total_cities)] for _ in range(total_cities)]
+
+            for i in range(len(cities)):
+                for y in range(i, len(cities)):
+                    distance_matrix[i][y] = round(calculate_total_distance((cities[i], cities[y])), 0)
+            for i in range(len(cities)):
+                for j in range(i, len(cities)):
+                    distance_matrix[j][i] = distance_matrix[i][j]
+            for i in range(len(cities)):
+                distance_matrix[i][i] = np.inf
+            distances = np.array(distance_matrix)
+
+            self.distances = distances
+            self.pheromone = np.ones(self.distances.shape) / len(distances)
+            self.all_inds = range(len(distances))
+            self.ant_total = total_ants
+            self.best_total = total_best
+            self.iterations_total = n_iterations
+            self.decay = decay
+            self.cities = cities
+            self.__run()
+
+        def __run(self):
+            best_path = ("", np.inf)
+            old_paths = best_path[0]
+
+            city_x = []
+            city_y = []
+
+            for city in self.cities:
+                city_x.append(city.x)
+                city_y.append(city.y)
+
+            plt.ion()
+
+            for i in range(self.iterations_total):
+                all_paths = self.generate_all_paths()
+                self.update_pheromone(all_paths, self.best_total)
+                current_best_path = min(all_paths, key=lambda x: x[1])
+                if current_best_path[1] < best_path[1]:
+                    best_path = current_best_path
+                paths = best_path[0]
+                if old_paths != paths:
+                    old_paths = paths
+                    plt.clf()
+                    plt.scatter(city_x, city_y, s=60, c=(0, 0, 0), alpha=0.5)
+                    paths = best_path[0]
+                    for aa in range(0, len(paths)):
+                        plt.plot([self.cities[paths[aa][0]].x, self.cities[paths[aa][1]].x],
+                                 [self.cities[paths[aa][0]].y, self.cities[paths[aa][1]].y])
+
+                    plt.title('Ant Colony TSP current distance ->' + str(best_path[1]))
+                    plt.xlabel('X')
+                    plt.ylabel('Y')
+
+                    plt.draw()
+                    plt.pause(0.3)
+
+            return best_path
+
+        def update_pheromone(self, all_paths, n_best):
+            sorted_paths = sorted(all_paths, key=lambda x: x[1])
+            for path, dist in sorted_paths[:n_best]:
+                for move in path:
+                    self.pheromone[move] += 1.0 / self.distances[move]
+
+        def generate_path_distance(self, path):
+            total_dist = 0
+            for ele in path:
+                total_dist += self.distances[ele]
+            return total_dist
+
+        def generate_all_paths(self):
+            all_paths = []
+            for i in range(self.ant_total):
+                path = self.generate_path(0)
+                all_paths.append((path, self.generate_path_distance(path)))
+            return all_paths
+
+        def generate_path(self, start):
+            path = []
+            visited = set()
+            visited.add(start)
+            prev = start
+            for i in range(len(self.distances) - 1):
+                move = self.move(self.pheromone[prev], self.distances[prev], visited)
+                path.append((prev, move))
+                prev = move
+                visited.add(move)
+            path.append((prev, start))
+            return path
+
+        def move(self, pheromone, dist, visited):
+            pheromone = np.copy(pheromone)
+            pheromone[list(visited)] = 0
+
+            row = pheromone * (1.0 / dist)
+
+            norm_row = row / row.sum()
+            move = np.random.choice(self.all_inds, 1, p=norm_row)[0]
+            return move
 
     def hc(self, function, neighbour_count, sigma, total_iterations):
         points_to_show = []
@@ -340,33 +480,6 @@ class Vizualizer:
         if self.dimension == 2:
             self.animate_soma_sol(swarm_solution, function)
         return g_best
-
-    def genetic_algorithm(self, city_count=10, total_populations=150):
-        city_list = self.generate_cities(city_count, 200)
-        population = generate_pop(city_list, total_populations)
-        city_x, city_y = generate_city_positions(city_list)
-        best_distance = math.inf
-        plt.ion()
-
-        while True:
-            population = cross_breed(population)
-            new_best_pop = find_best(population)
-            new_best_distance = calculate_total_distance(new_best_pop)
-
-            if new_best_distance < best_distance:
-                best_pop = new_best_pop[:]
-                best_distance = new_best_distance
-
-                for aa in range(0, len(best_pop) - 1):
-                    plt.plot([best_pop[aa].x, best_pop[aa + 1].x], [best_pop[aa].y, best_pop[aa + 1].y])
-                plt.plot([best_pop[len(best_pop) - 1].x, best_pop[0].x], [best_pop[len(best_pop) - 1].y, best_pop[0].y])
-
-                plt.scatter(city_x, city_y, s=60, c=(0, 0, 0), alpha=0.5)
-                plt.title('TSP Current:' + str(best_distance))
-
-                plt.draw()
-                plt.pause(0.5)
-                plt.clf()
 
     def generate_cities(self, count, boundaries):
         cities = []
