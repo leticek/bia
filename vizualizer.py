@@ -175,24 +175,24 @@ class City:
 
 
 class Vizualizer:
-    def __init__(self, dimension, lower_bound, upper_bound):
-        self.dimension = dimension
+    def __init__(self, lower_bound, upper_bound):
+        self.dimension = 2
         self.lower_bound = lower_bound
         self.upper_bound = upper_bound
         self.parameters = numpy.zeros(self.dimension)
         self.function = numpy.inf
 
-    def hill_climb(self, functions, neighbour_count=10, sigma=0.5, total_iterations=1000):
+    def hill_climb(self, functions, neighbour_count=10, sigma=0.5, total_iterations=1000, random=False):
         for func in functions:
             print("Starting %s" % func.__name__)
-            self.hc(func, neighbour_count, sigma, total_iterations)
+            self.hc(func, neighbour_count, sigma, total_iterations, random)
             print("-------")
 
     def simulated_annealing(self, functions, initial_temperature=250, minimal_temperature=0.1, cooling_coefficient=0.95,
-                            sigma=0.5):
+                            sigma=0.5, random=False):
         for func in functions:
             print("Starting %s" % func.__name__)
-            self.sa(func, initial_temperature, minimal_temperature, cooling_coefficient, sigma)
+            self.sa(func, initial_temperature, minimal_temperature, cooling_coefficient, sigma, random)
             print("-------")
 
     def genetic_algorithm(self, city_count=10, total_populations=150):
@@ -216,7 +216,7 @@ class Vizualizer:
                 plt.plot([best_pop[len(best_pop) - 1].x, best_pop[0].x], [best_pop[len(best_pop) - 1].y, best_pop[0].y])
 
                 plt.scatter(city_x, city_y, s=60, c=(0, 0, 0), alpha=0.5)
-                plt.title('TSP Current:' + str(best_distance))
+                plt.title('Genetic algorithm TSP currenty distance -> ' + str(best_distance))
 
                 plt.draw()
                 plt.pause(0.5)
@@ -243,7 +243,7 @@ class Vizualizer:
 
     class AntColony:
         def __init__(self, total_ants=20, total_best=1, n_iterations=10000, decay=0.95, total_cities=20):
-            boundaries = 1000
+            boundaries = 200
             cities = []
 
             for i in range(0, total_cities):
@@ -302,7 +302,7 @@ class Vizualizer:
                         plt.plot([self.cities[paths[aa][0]].x, self.cities[paths[aa][1]].x],
                                  [self.cities[paths[aa][0]].y, self.cities[paths[aa][1]].y])
 
-                    plt.title('Ant Colony TSP current distance ->' + str(best_path[1]))
+                    plt.title('Ant Colony TSP current distance -> ' + str(best_path[1]))
                     plt.xlabel('X')
                     plt.ylabel('Y')
 
@@ -353,9 +353,12 @@ class Vizualizer:
             move = np.random.choice(self.all_inds, 1, p=norm_row)[0]
             return move
 
-    def hc(self, function, neighbour_count, sigma, total_iterations):
+    def hc(self, function, neighbour_count, sigma, total_iterations, random):
         points_to_show = []
-        best_point = [self.upper_bound, self.upper_bound]
+        if random:
+            best_point = self.get_random_solution(function)
+        else:
+            best_point = [self.upper_bound, self.upper_bound]
         z = function(best_point)
         best_point.append(z)
         for i in range(total_iterations):
@@ -369,10 +372,13 @@ class Vizualizer:
         self.show(points_to_show, function)
         return
 
-    def sa(self, function, initial_temperature, minimal_temperature, cooling_coefficient, sigma):
+    def sa(self, function, initial_temperature, minimal_temperature, cooling_coefficient, sigma, random):
         temperature = initial_temperature
         points_to_show = []
-        best_point = [self.upper_bound, self.upper_bound]
+        if random:
+            best_point = self.get_random_solution(function)
+        else:
+            best_point = [self.upper_bound, self.upper_bound]
         z = function(best_point)
         best_point.append(z)
         points_to_show.append(best_point)
@@ -443,7 +449,6 @@ class Vizualizer:
         population_solution = []
         m = 0
         while m < m_max:
-            print(m)
             leader = get_leader(population, function)
             for i in range(len(population)):
                 population[i] = self.recalculate_individual(function, population[i], leader, path_len, prt, step)
@@ -465,7 +470,7 @@ class Vizualizer:
         while current_cycle < migration_cycles:
             for i in range(len(swarm)):
                 velocity[i] = self.recalculate_particle_velocity(velocity[i], swarm[i], p_best[i], g_best,
-                                                                 current_cycle, migration_cycles, c1)
+                                                                 current_cycle, migration_cycles, c1, c2)
                 swarm[i] = self.fix_particle_bounds(np.add(swarm[i], velocity[i]))
 
                 if function(swarm[i]) < function(p_best[i]):
@@ -486,7 +491,7 @@ class Vizualizer:
         for i in range(0, count):
             new_x = random.randrange(0, boundaries)
             new_y = random.randrange(0, boundaries)
-            cities.append(self.City(new_x, new_y, i))
+            cities.append(City(new_x, new_y, i))
         return cities
 
     def generate_swarm_velocity(self, pop_size, v_mini, v_maxi):
@@ -498,13 +503,13 @@ class Vizualizer:
             p.append(pi)
         return p
 
-    def recalculate_particle_velocity(self, velocity, particle, p_best, g_best, i, migration_cycles, c1):
+    def recalculate_particle_velocity(self, velocity, particle, p_best, g_best, i, migration_cycles, c1, c2):
         ws = 0.9
         we = 0.4
         r1 = np.random.uniform()
         w = ws * ((ws - we) * i) / migration_cycles
         new_velocity = np.add(np.add(np.multiply(velocity, w), np.multiply((r1 * c1), (np.subtract(p_best, particle)))),
-                              np.multiply((r1 * c1), (np.subtract(g_best, particle))))
+                              np.multiply((r1 * c2), (np.subtract(g_best, particle))))
         self.fix_particle_bounds(new_velocity)
         return new_velocity
 
